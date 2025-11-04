@@ -21,7 +21,7 @@ const initialHtml = `
 <body class="bg-gray-100">
     <div class="min-h-screen flex items-center justify-center">
         <div class="text-center p-8 bg-white rounded-lg shadow-lg">
-            <h1 class="text-4xl font-bold text-gray-800 mb-4">AI Website Builder</h1>
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">Rajaonline Website Builder</h1>
             <p class="text-lg text-gray-600">
                 Describe the website you want to build in the panel on the left.
             </p>

@@ -8,6 +8,7 @@ import { PreviewIcon } from './components/icons/PreviewIcon';
 import { generateWebsiteTemplate } from './services/geminiService';
 
 type ViewMode = 'preview' | 'code';
+type ActiveCodeTab = 'html' | 'css' | 'js';
 
 const initialHtml = `
 <!DOCTYPE html>
@@ -82,12 +83,40 @@ const themes = {
   }
 };
 
+class ParsingError extends Error {
+  line?: number;
+  column?: number;
+  rawContent: string;
+
+  constructor(message: string, rawContent: string, line?: number, column?: number) {
+    super(message);
+    this.name = 'ParsingError';
+    this.rawContent = rawContent;
+    this.line = line;
+    this.column = column;
+  }
+}
+
 const parseHtml = (fullHtml: string): { html: string, css: string, js: string } => {
     if (typeof DOMParser === 'undefined') {
         return { html: fullHtml, css: '', js: '' };
     }
     const parser = new DOMParser();
     const doc = parser.parseFromString(fullHtml, 'text/html');
+
+    const parserError = doc.querySelector('parsererror');
+    if (parserError) {
+        const errorText = parserError.textContent || '';
+        // Example: "error on line 2 at column 1: Extra content at the end of the document"
+        const match = errorText.match(/error on line (\d+) at column (\d+): (.*)/);
+        if (match) {
+            const line = parseInt(match[1], 10);
+            const column = parseInt(match[2], 10);
+            const message = match[3];
+            throw new ParsingError(message, fullHtml, line, column);
+        }
+        throw new ParsingError(errorText || 'Failed to parse HTML.', fullHtml);
+    }
 
     const cssArray: string[] = [];
     doc.querySelectorAll('style').forEach(style => {
@@ -117,6 +146,11 @@ const examplePrompts = [
   'A landing page for a mobile app called "FitTrack", highlighting key features.',
 ];
 
+type ErrorInfo = {
+  message: string;
+  line?: number;
+  column?: number;
+};
 
 function App() {
   const [prompt, setPrompt] = useState<string>('A modern landing page for a new SaaS product called "InnovateAI", focusing on features and pricing.');
@@ -124,8 +158,9 @@ function App() {
   const [cssCode, setCssCode] = useState<string>('');
   const [jsCode, setJsCode] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorInfo | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
+  const [activeCodeTab, setActiveCodeTab] = useState<ActiveCodeTab>('html');
   const [themeName, setThemeName] = useState<string>('dark');
 
   // Load template from localStorage on initial mount
@@ -219,7 +254,16 @@ function App() {
       setJsCode(js);
       setViewMode('preview');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+      if (err instanceof ParsingError) {
+          setHtmlCode(err.rawContent);
+          setCssCode('');
+          setJsCode('');
+          setError({ message: err.message, line: err.line, column: err.column });
+          setViewMode('code');
+          setActiveCodeTab('html');
+      } else {
+          setError({ message: err instanceof Error ? err.message : 'An unknown error occurred.' });
+      }
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -263,14 +307,31 @@ function App() {
           </div>
 
           <div className="flex-grow relative">
-            {error && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-                <div className="bg-red-800/90 p-6 rounded-lg shadow-xl text-center">
-                  <h3 className="text-lg font-bold mb-2">Error Generating Template</h3>
-                  <p className="text-red-200">{error}</p>
-                  <button onClick={() => setError(null)} className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-md transition-colors">
-                    Close
-                  </button>
+            {error && !error.line && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10 p-4">
+                <div className="bg-red-900 border border-red-700 p-6 rounded-lg shadow-xl text-center max-w-md w-full">
+                  <h3 className="text-lg font-bold text-white mb-2">Generation Failed</h3>
+                  <p className="text-red-200">{error.message}</p>
+                  <p className="text-sm text-red-300 mt-4">
+                    Would you like to try again? Sometimes a second attempt works. If the problem persists, consider simplifying your request.
+                  </p>
+                  <div className="mt-6 flex justify-center space-x-4">
+                    <button
+                      onClick={() => setError(null)}
+                      className="px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors text-sm font-medium"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => {
+                        setError(null);
+                        handleGenerate();
+                      }}
+                      className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors text-sm font-medium"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -288,6 +349,10 @@ function App() {
                 themeName={themeName}
                 setThemeName={setThemeName}
                 themeNames={Object.keys(themes)}
+                activeTab={activeCodeTab}
+                setActiveTab={setActiveCodeTab}
+                error={error}
+                combinedHtml={combinedHtml}
               />
             )}
           </div>

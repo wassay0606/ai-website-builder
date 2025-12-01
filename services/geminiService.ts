@@ -38,6 +38,6 @@ Your task is to generate a complete, single HTML file based on the following use
     return htmlContent.trim();
   } catch (error) {
     console.error("Error calling Gemini API:", error);
-    throw new Error("Failed to generate website template. Please check your API key and network connection.");
+    throw new Error("An error occurred while generating the website. This might be due to a temporary issue with the AI service or your network connection. Please try again in a moment.");
   }
 }
